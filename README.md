@@ -191,6 +191,390 @@ docker compose logs nodered
 docker compose logs grafana
 ```
 
+# B. Thực hành áp dụng
+## 1. Tạo cấu trúc thư mục dự án (Ubuntu)
+- Mở Terminal Ubuntu rồi chạy lần lượt từng lệnh:
+```
+mkdir -p ~/bt5-monitor-app/{nodered,flask-api,nginx/html}
+cd ~/bt5-monitor-app
+ls -R
+```
+<img width="974" height="512" alt="image" src="https://github.com/user-attachments/assets/bde07cbb-05f2-4519-a78f-17fdf9c109a7" />
+
+## 2. Tạo file `docker-compose.yml`
+- Chạy lệnh sau để tạo và mở file: `nano docker-compose.yml`
+```
+version: "3.8"
+
+services:
+
+  nodered:
+    image: nodered/node-red:latest
+    container_name: nodered
+    restart: always
+    ports:
+      - "1880:1880"
+    volumes:
+      - nodered_data:/data
+    networks:
+      - monitor_net
+
+  mariadb:
+    image: mariadb:10.11
+    container_name: mariadb
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: root123
+      MYSQL_DATABASE: monitor_db
+      MYSQL_USER: monitor
+      MYSQL_PASSWORD: monitor123
+    volumes:
+      - mariadb_data:/var/lib/mysql
+    networks:
+      - monitor_net
+
+  influxdb:
+    image: influxdb:2.7
+    container_name: influxdb
+    restart: always
+    ports:
+      - "8086:8086"
+    environment:
+      DOCKER_INFLUXDB_INIT_MODE: setup
+      DOCKER_INFLUXDB_INIT_USERNAME: admin
+      DOCKER_INFLUXDB_INIT_PASSWORD: admin123456
+      DOCKER_INFLUXDB_INIT_ORG: myorg
+      DOCKER_INFLUXDB_INIT_BUCKET: monitor_bucket
+      DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: mytoken123456
+    volumes:
+      - influxdb_data:/var/lib/influxdb2
+    networks:
+      - monitor_net
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    restart: always
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ALLOW_EMBEDDING: "true"
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+    volumes:
+      - grafana_data:/var/lib/grafana
+    networks:
+      - monitor_net
+
+  flask-api:
+    build: ./flask-api
+    container_name: flask-api
+    restart: always
+    ports:
+      - "5000:5000"
+    networks:
+      - monitor_net
+
+  nginx:
+    image: nginx:latest
+    container_name: nginx
+    restart: always
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/html:/usr/share/nginx/html
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf
+    networks:
+      - monitor_net
+
+networks:
+  monitor_net:
+    driver: bridge
+
+volumes:
+  nodered_data:
+  mariadb_data:
+  influxdb_data:
+  grafana_data:
+```
+<img width="1143" height="657" alt="image" src="https://github.com/user-attachments/assets/e787cdab-7d92-4a78-9330-80c5c1b92506" />
+
+- Kiểm tra file vừa tạo: `cat docker-compose.yml`
+<img width="1143" height="656" alt="image" src="https://github.com/user-attachments/assets/034d71c4-d1d3-491f-8dc4-1ba5654bb8ea" />
+
+## 3. Tạo Flask API
+- Chạy lần lượt các lệnh:
+```
+cd ~/bt5-monitor-app/flask-api
+nano app.py
+```
+- Paste nội dung này vào `nano app.py`
+```
+from flask import Flask, jsonify
+import pymysql
+
+app = Flask(__name__)
+
+DB_CONFIG = {
+    'host': 'mariadb',
+    'user': 'monitor',
+    'password': 'monitor123',
+    'database': 'monitor_db',
+    'charset': 'utf8mb4'
+}
+
+@app.route('/api/latest', methods=['GET'])
+def get_latest():
+    try:
+        conn = pymysql.connect(**DB_CONFIG)
+        cursor = conn.cursor(pymysql.cursors.DictCursor)
+        cursor.execute("SELECT * FROM sensor_data ORDER BY id DESC LIMIT 1")
+        row = cursor.fetchone()
+        conn.close()
+        if row:
+            return jsonify({"status": "ok", "data": row})
+        else:
+            return jsonify({"status": "ok", "data": None})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/api/history', methods=['GET'])
+def get_history():
+    try:
+        conn = pymysql.connect(**DB_CONFIG)
+        cursor = conn.cursor(pymysql.cursors.DictCursor)
+        cursor.execute("SELECT * FROM sensor_data ORDER BY id DESC LIMIT 20")
+        rows = cursor.fetchall()
+        conn.close()
+        return jsonify({"status": "ok", "data": rows})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5000, debug=True)
+```
+<img width="892" height="595" alt="image" src="https://github.com/user-attachments/assets/a3499f8d-4824-4e02-8091-fed779dfbadd" />
+
+- Tiếp theo tạo file requirements.txt: `nano requirements.txt`
+<img width="901" height="597" alt="image" src="https://github.com/user-attachments/assets/c46064ec-b1a5-4915-9f7a-33ff7a722a82" />
+
+- Tiếp theo tạo Dockerfile: `nano Dockerfile`
+```
+FROM python:3.11-slim
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+COPY . .
+CMD ["python", "app.py"]
+```
+<img width="901" height="595" alt="image" src="https://github.com/user-attachments/assets/502240bb-437f-4362-a6d9-e71e8333bdaa" />
+
+- Để xuất hiện 3 file: app.py, requirements.txt, Dockerfile
+<img width="902" height="602" alt="image" src="https://github.com/user-attachments/assets/9684d2f6-9841-4f8b-8bdc-def2fb43c444" />
+
+## 4. Tạo file cấu hình Nginx
+```
+cd ~/bt5-monitor-app/nginx
+nano nginx.conf
+```
+- Paste nội dung:
+```
+server {
+    listen 80;
+
+    location / {
+        root /usr/share/nginx/html;
+        index index.html;
+    }
+
+    location /api/ {
+        proxy_pass http://flask-api:5000/api/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+}
+```
+<img width="901" height="593" alt="image" src="https://github.com/user-attachments/assets/68f3b4c9-3b35-4c59-8508-3aa7d68fab13" />
+
+- Tạo file `index.html` cho frontend: `nano html/index.html`
+```
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <title>Monitor Dashboard</title>
+  <style>
+    body { font-family: Arial, sans-serif; background: #1a1a2e; color: #eee; margin: 0; padding: 20px; }
+    h1 { text-align: center; color: #00d4ff; }
+    .card { background: #16213e; border-radius: 12px; padding: 20px; margin: 20px auto; max-width: 500px; text-align: center; }
+    .value { font-size: 48px; font-weight: bold; color: #00d4ff; }
+    .label { font-size: 14px; color: #aaa; margin-top: 8px; }
+    .status-ok { color: #00ff88; }
+    .status-alert { color: #ff4444; }
+    iframe { width: 100%; height: 400px; border: none; border-radius: 12px; margin-top: 20px; }
+  </style>
+</head>
+<body>
+  <h1>📊 Monitor & Alert Dashboard</h1>
+
+  <div class="card">
+    <div class="value" id="current-value">--</div>
+    <div class="label">Giá Vàng (USD/oz) - Cập nhật tự động</div>
+    <div class="label" id="update-time"></div>
+    <div class="label" id="alert-status"></div>
+  </div>
+
+  <div class="card">
+    <h3>📈 Biểu đồ lịch sử (Grafana)</h3>
+    <iframe src="http://localhost:3000/d-solo/monitor/gold-price?orgId=1&panelId=1&refresh=5s"
+            allowfullscreen></iframe>
+  </div>
+
+  <script>
+    const ALERT_LOW = 3000;
+    const ALERT_HIGH = 3500;
+
+    function fetchLatest() {
+      fetch('/api/latest')
+        .then(res => res.json())
+        .then(json => {
+          if (json.status === 'ok' && json.data) {
+            const val = json.data.value;
+            const time = json.data.timestamp;
+            document.getElementById('current-value').textContent = parseFloat(val).toFixed(2);
+            document.getElementById('update-time').textContent = 'Lúc: ' + time;
+
+            const statusEl = document.getElementById('alert-status');
+            if (val < ALERT_LOW) {
+              statusEl.textContent = '⚠️ ALERT LOW: Giá dưới ngưỡng!';
+              statusEl.className = 'label status-alert';
+            } else if (val > ALERT_HIGH) {
+              statusEl.textContent = '⚠️ ALERT HIGH: Giá vượt ngưỡng!';
+              statusEl.className = 'label status-alert';
+            } else {
+              statusEl.textContent = '✅ Bình thường';
+              statusEl.className = 'label status-ok';
+            }
+          }
+        })
+        .catch(err => console.error('Lỗi fetch:', err));
+    }
+
+    fetchLatest();
+    setInterval(fetchLatest, 5000);
+  </script>
+</body>
+</html>
+```
+
+- Kiểm tra:
+```
+ls -la ~/bt5-monitor-app/nginx/
+ls -la ~/bt5-monitor-app/nginx/html/
+```
+<img width="904" height="579" alt="image" src="https://github.com/user-attachments/assets/b48732ef-03bd-4307-8e41-73b2be7f37d6" />
+
+## 5. Khởi động toàn bộ Docker Compose
+- Trở về thư mục gốc chạy:
+```
+cd ~/bt5-monitor-app
+docker compose up -d --build
+```
+<img width="1919" height="1025" alt="image" src="https://github.com/user-attachments/assets/f6cc3044-c39b-4306-a3ab-e958f202c2aa" />
+
+- Kiểm tra trạng thái: `docker compose ps`
+<img width="1923" height="702" alt="image" src="https://github.com/user-attachments/assets/961c9680-72a4-44fa-aa40-9efa6f40eff5" />
+
+## 6. Tạo bảng trong MariaDB
+- Trước khi cấu hình Node-RED, cần tạo bảng lưu dữ liệu trong MariaDB:
+```
+docker exec -it mariadb mariadb -u monitor -pmonitor123 monitor_db
+```
+
+- Chạy lệnh SQL:
+```
+CREATE TABLE IF NOT EXISTS sensor_data (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(50) NOT NULL,
+    value FLOAT NOT NULL,
+    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+```
+<img width="911" height="597" alt="image" src="https://github.com/user-attachments/assets/a2929232-bd5e-40c0-80b6-1b84402ad910" />
+
+- Kiểm tra bảng đã tạo: `SHOW TABLES;`
+<img width="905" height="528" alt="image" src="https://github.com/user-attachments/assets/6adeb64c-a1ba-42b7-9bc4-9dca939916a3" />
+
+## 7. Cấu hình Node-RED
+- Truy cập: `http://localhost:1880`
+<img width="1919" height="990" alt="image" src="https://github.com/user-attachments/assets/e186ae8c-b993-4bcd-89e5-39a6ab4de2c0" />
+
+- Cần cài thêm 2 thư viện:
+  + Nhấn vào menu ☰ (góc trên phải) → chọn Manage palette
+  + Chọn tab Install
+  + Tìm và cài lần lượt 2 package sau: `node-red-node-mysql` và `node-red-contrib-influxdb` → nhấn Install
+<img width="1919" height="990" alt="image" src="https://github.com/user-attachments/assets/b7bf739c-a3b3-401b-900c-644f642b82b6" />
+
+<img width="1919" height="988" alt="image" src="https://github.com/user-attachments/assets/c4ae251e-04b2-4ae6-9811-2f923392026d" />
+
+## 8. Tạo Flow trong Node-RED
+- Nhấn menu ☰ góc trên phải → chọn Import
+- Copy nội dung JSON rồi paste vào ô Import:
+```
+[
+  {"id":"inject1","type":"inject","name":"Mỗi 30 giây","repeat":"30","once":true,"x":130,"y":100,"wires":[["http_gold"]]},
+  {"id":"http_gold","type":"http request","name":"Lấy giá vàng","method":"GET","ret":"obj","url":"https://data-asg.goldprice.org/dbXRates/USD","x":330,"y":100,"wires":[["parse_gold"]]},
+  {"id":"parse_gold","type":"function","name":"Parse giá vàng","func":"var price = msg.payload.items[0].xauPrice;\nmsg.payload = { name: 'gold', value: price };\nmsg.value = price;\nreturn msg;","x":540,"y":100,"wires":[["mysql_node","influx_node","check_alert"]]},
+  {"id":"mysql_node","type":"mysql","name":"Lưu MariaDB","mysqlConfig":"mysql_config","sql":"INSERT INTO sensor_data (name, value) VALUES ('{{{payload.name}}}', {{{payload.value}}});","x":540,"y":220,"wires":[[]]},
+  {"id":"influx_node","type":"influxdb out","name":"Lưu InfluxDB","influxdb":"influx_config","measurement":"gold_price","x":540,"y":300,"wires":[]},
+  {"id":"check_alert","type":"function","name":"Kiểm tra ngưỡng","func":"var val = msg.value;\nvar LOW = 3000;\nvar HIGH = 3500;\nif(val < LOW){\n  msg.alert = '⚠️ ALERT LOW: Giá vàng = ' + val.toFixed(2) + ' USD/oz - Dưới ngưỡng ' + LOW;\n  return msg;\n} else if(val > HIGH){\n  msg.alert = '⚠️ ALERT HIGH: Giá vàng = ' + val.toFixed(2) + ' USD/oz - Vượt ngưỡng ' + HIGH;\n  return msg;\n}\nreturn null;","x":540,"y":400,"wires":[["telegram_node"]]},
+  {"id":"telegram_node","type":"http request","name":"Gửi Telegram","method":"GET","ret":"txt","url":"https://api.telegram.org/bot{{{BOT_TOKEN}}}/sendMessage?chat_id={{{CHAT_ID}}}&text={{{alert}}}","x":760,"y":400,"wires":[[]]}
+]
+```
+<img width="1919" height="989" alt="image" src="https://github.com/user-attachments/assets/c1a6c052-a16c-470b-a27e-32e49a6e6e67" />
+
+- Sau khi import xong sẽ thấy các node xuất hiện
+<img width="1919" height="987" alt="image" src="https://github.com/user-attachments/assets/f1ff5c4c-6cdc-4eb1-b7be-df7c55bc1dd8" />
+
+## 9. Cấu hình node
+- Vào node "Lưu MariaDB
+  + Host: `mariadb`
+  + Port: `3306`
+  + User: `monitor`
+  + Password: `monitor123`
+  + Database: `monitor_db`
+<img width="1919" height="988" alt="image" src="https://github.com/user-attachments/assets/46d1452f-1f92-4ce2-88c2-7a5a10850e3d" />
+
+- Tiếp tục vào node `Lưu InfluxDB`
+  + Version: `2.0`
+  + URL: `http://influxdb:8086`
+  + Token: `mytoken123456`
+  + Organisation: `myorg`
+  + Bucket: `monitor_bucket`
+<img width="1919" height="988" alt="image" src="https://github.com/user-attachments/assets/43af04b6-0b61-45da-8286-901402cfc530" />
+
+<img width="1919" height="986" alt="image" src="https://github.com/user-attachments/assets/f373dc05-b60d-4b44-8677-34408b23a11e" />
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
