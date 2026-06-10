@@ -555,10 +555,117 @@ CREATE TABLE IF NOT EXISTS sensor_data (
 
 <img width="1919" height="986" alt="image" src="https://github.com/user-attachments/assets/f373dc05-b60d-4b44-8677-34408b23a11e" />
 
+- Ấn vào node `Parse giá vàng` và sửa thành:
+```
+try {
+    var data = msg.payload;
+    if (typeof data === 'string') {
+        data = JSON.parse(data);
+    }
+    var price = data.chart.result[0].meta.regularMarketPrice;
+    msg.payload = { name: 'gold', value: price };
+    msg.topic = "INSERT INTO sensor_data (name, value) VALUES ('gold', " + price + ");";
+    msg.value = price;
+    node.warn("Giá vàng: " + price);
+    return msg;
+} catch(e) {
+    node.error("Parse error: " + e.message, msg);
+    return null;
+}
+```
+<img width="1919" height="979" alt="image" src="https://github.com/user-attachments/assets/2e1d1f2e-d71c-4c6d-b021-144df4aa187f" />
 
+## 10. Cấu hình Telegram Bot
+- Tìm kiếm @BotFather → nhấn vào → nhắn `/newbot`
+- BotFather hỏi tên bot → gõ: `MonitorAlertBot`
+- BotFather hỏi username → gõ: `monitor_vietanh_bot`
+- BotFather trả về Token:
+```
+8909281104:AAG6kZyQwboK0nP8Xuj8ertY8RnwEHqm8_o
+```
+<img width="1919" height="986" alt="image" src="https://github.com/user-attachments/assets/88861ea9-bc86-451e-b01d-6b69ddf0de29" />
 
+- Tạo 1 group mới trên Telegram
+- Thêm bot @monitor_vietanh_bot vào group
+- Nhấn Next → đặt tên group: `Monitor Alert` -> Nhấn Create
+<img width="1919" height="982" alt="image" src="https://github.com/user-attachments/assets/10e842f0-04c5-4f5b-9268-16d3a8075ead" />
 
+ - Nhắn `hello` rồi gửi
+<img width="1919" height="988" alt="image" src="https://github.com/user-attachments/assets/a2cd8229-d3a0-4aa0-95f9-b794b2d50a68" />
 
+- Truy cập vào: `https://api.telegram.org/bot8909281104:AAG6kZyQwboK0nP8Xuj8ertY8RnwEHqm8_o/getUpdates`
+<img width="1919" height="749" alt="image" src="https://github.com/user-attachments/assets/1a65434c-4111-4f6b-9a4b-2ca4a38c59ec" />
+
+- Quay lại chat BotFather trên Telegram Web
+- Nhắn: `/setprivacy`
+- BotFather hỏi chọn bot → nhắn: `@monitor_vietanh_bot`
+- BotFather hỏi chế độ → chọn/nhắn: `Disable`
+<img width="1919" height="984" alt="image" src="https://github.com/user-attachments/assets/0a360c2e-c9a4-4c4b-b009-aee737058823" />
+
+- Quay lại Node-RED (localhost:1880), vào node "Gửi Telegram" và sửa URL thành:
+```
+https://api.telegram.org/bot8909281104:AAG6kZyQwboK0nP8Xuj8ertY8RnwEHqm8_o/sendMessage?chat_id=-5240697941&text={{{alert}}}
+```
+<img width="1919" height="986" alt="image" src="https://github.com/user-attachments/assets/e669d2e3-708d-40c7-85fe-859faf861741" />
+
+- Truy cập vào node `Lấy giá vàng` → sửa URL thành: `https://query1.finance.yahoo.com/v8/finance/chart/GC%3DF`
+<img width="1919" height="990" alt="image" src="https://github.com/user-attachments/assets/6e530a54-60dd-4ffa-a0c2-1bc5c4730d68" />
+
+- Dữ liệu giá vàng đã chạy thành công! Giá vàng ~4210 USD/oz đang được cập nhật mỗi 30 giây
+<img width="1919" height="990" alt="image" src="https://github.com/user-attachments/assets/e5c8b424-da11-4156-a7b9-2ee77d946af8" />
+
+- Tiếp tục vào node "Kiểm tra ngưỡng" → thêm nội dung:
+```
+var val = msg.value;
+var LOW = 3000;
+var HIGH = 4000;
+
+// Chỉ gửi alert mỗi 5 phút
+var now = Date.now();
+var lastAlert = context.get('lastAlert') || 0;
+if (now - lastAlert < 300000) return null;
+
+if(val < LOW){
+    context.set('lastAlert', now);
+    msg.alert = encodeURIComponent('⚠️ ALERT LOW: Giá vàng = ' + val.toFixed(2) + ' USD/oz - Dưới ngưỡng ' + LOW);
+    return msg;
+} else if(val > HIGH){
+    context.set('lastAlert', now);
+    msg.alert = encodeURIComponent('⚠️ ALERT HIGH: Giá vàng = ' + val.toFixed(2) + ' USD/oz - Vượt ngưỡng ' + HIGH);
+    return msg;
+}
+return null;
+```
+<img width="1919" height="990" alt="image" src="https://github.com/user-attachments/assets/de788cf2-e670-4cf4-af25-2f47e01e58c8" />
+
+- Trong Node-RED, kéo 1 node `debug` từ palette trái → nối vào output của node `Kiểm tra ngưỡng`
+<img width="1919" height="990" alt="image" src="https://github.com/user-attachments/assets/38e8b54d-dd2e-4b80-bd49-577a93bce237" />
+
+- Sau khi nhắn `hello` vào group Monitor Alert → sau đó truy cập vào URL: `https://api.telegram.org/bot8909281104:AAG6kZyQwboK0nP8Xuj8ertY8RnwEHqm8_o/getUpdates`
+<img width="1919" height="988" alt="image" src="https://github.com/user-attachments/assets/0d40d390-e604-4a52-ba51-296911c7e093" />
+
+<img width="1919" height="447" alt="image" src="https://github.com/user-attachments/assets/ba977acf-3bb2-44a7-adff-88f29c3cf058" />
+
+- Bot đã gửi tin nhắn vào group thành công
+<img width="1919" height="986" alt="image" src="https://github.com/user-attachments/assets/16a0e1f9-4edb-4004-b44e-a40a5b0ac7ff" />
+
+## 11. Cấu hình Grafana
+- Mở trình duyệt vào:
+```
+http://localhost:3000
+```
+<img width="1919" height="983" alt="image" src="https://github.com/user-attachments/assets/2d7dcf33-b159-4f1c-a3cf-7f28a12682fa" />
+
+<img width="1919" height="980" alt="image" src="https://github.com/user-attachments/assets/52fb84b7-a5f3-464a-889d-c88dee063943" />
+
+- Thêm Data Source InfluxDB
+  + Nhấn Connections (menu trái) → Data sources → Add new data source
+<img width="1919" height="985" alt="image" src="https://github.com/user-attachments/assets/dc6f9661-3eab-4402-baba-344ec842a3f6" />
+  + Tìm và chọn InfluxDB
+<img width="1919" height="990" alt="image" src="https://github.com/user-attachments/assets/5de9a27c-9db2-401d-84c8-4dc5102379bc" />
+  + ll
+  + mm
+  + 
 
 
 
