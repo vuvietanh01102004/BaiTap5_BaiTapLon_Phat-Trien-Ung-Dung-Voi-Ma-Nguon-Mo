@@ -730,55 +730,139 @@ cat > ~/bt5-monitor-app/nginx/html/index.html << 'EOF'
   <meta charset="UTF-8">
   <title>Monitor Dashboard</title>
   <style>
-    body { font-family: Arial, sans-serif; background: #1a1a2e; color: #eee; margin: 0; padding: 20px; }
-    h1 { text-align: center; color: #00d4ff; }
-    .card { background: #16213e; border-radius: 12px; padding: 20px; margin: 20px auto; max-width: 800px; text-align: center; }
-    .value { font-size: 48px; font-weight: bold; color: #00d4ff; }
-    .label { font-size: 14px; color: #aaa; margin-top: 8px; }
-    .status-ok { color: #00ff88; }
-    .status-alert { color: #ff4444; }
-    iframe { width: 100%; height: 400px; border: none; border-radius: 12px; margin-top: 10px; }
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{font-family:Arial,sans-serif;background:#0d0d1a;color:#eee;padding:20px}
+    .header{display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;padding-bottom:16px;border-bottom:1px solid #1e1e3a}
+    .header h1{font-size:20px;font-weight:500;color:#a78bfa}
+    .status-bar{display:flex;align-items:center;gap:8px;font-size:13px;color:#7c7c9a}
+    .dot{width:8px;height:8px;border-radius:50%;background:#22c55e;animation:pulse 2s infinite}
+    @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}
+    .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:20px}
+    .card{background:#13132a;border:1px solid #1e1e3a;border-radius:12px;padding:16px}
+    .card-label{font-size:12px;color:#7c7c9a;margin-bottom:8px}
+    .card-value{font-size:28px;font-weight:bold;color:#a78bfa}
+    .card-sub{font-size:12px;color:#7c7c9a;margin-top:4px}
+    .badge{display:inline-block;padding:2px 8px;border-radius:6px;font-size:11px;font-weight:500}
+    .badge-alert{background:#3b1c1c;color:#f87171}
+    .badge-ok{background:#0f2d1c;color:#4ade80}
+    .source-card,.chart-card,.alert-card{background:#13132a;border:1px solid #1e1e3a;border-radius:12px;padding:16px;margin-bottom:20px}
+    .section-title{font-size:14px;color:#a78bfa;font-weight:500;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center}
+    .source-items{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+    .source-item{background:#0d0d1a;border:1px solid #1e1e3a;border-radius:8px;padding:10px;display:flex;align-items:center;gap:10px}
+    .source-name{font-size:13px;font-weight:500}
+    .source-status{font-size:11px;color:#7c7c9a}
+    iframe{width:100%;height:350px;border:none;border-radius:8px}
+    .alert-item{display:flex;align-items:center;gap:10px;padding:8px;background:#0d0d1a;border-radius:8px;margin-bottom:8px;font-size:13px}
+    .alert-time{font-size:11px;color:#7c7c9a;margin-left:auto;white-space:nowrap}
+    .status-row{display:flex;justify-content:space-between;font-size:12px;padding:3px 0}
   </style>
 </head>
 <body>
-  <h1>📊 Monitor & Alert Dashboard</h1>
-  <div class="card">
-    <div class="value" id="current-value">--</div>
-    <div class="label">Giá Vàng (USD/oz) - Cập nhật tự động</div>
-    <div class="label" id="update-time"></div>
-    <div class="label" id="alert-status"></div>
+  <div class="header">
+    <h1>📊 Monitor & Alert Dashboard</h1>
+    <div class="status-bar">
+      <div class="dot"></div>
+      <span id="sys-status">Hệ thống đang hoạt động</span>
+      <span style="color:#1e1e3a">|</span>
+      <span id="last-update"></span>
+    </div>
   </div>
-  <div class="card">
-    <h3>📈 Biểu đồ lịch sử (Grafana)</h3>
+
+  <div class="grid">
+    <div class="card">
+      <div class="card-label">Giá vàng hiện tại</div>
+      <div class="card-value" id="current-value">--</div>
+      <div class="card-sub">USD/oz · cập nhật 5s/lần</div>
+      <div style="margin-top:8px" id="alert-status"></div>
+    </div>
+    <div class="card">
+      <div class="card-label">Ngưỡng cảnh báo</div>
+      <div style="display:flex;flex-direction:column;gap:6px;margin-top:6px">
+        <div style="font-size:16px;color:#4ade80;font-weight:bold">▼ 3,000 <span style="font-size:11px;color:#7c7c9a">LOW</span></div>
+        <div style="font-size:16px;color:#f87171;font-weight:bold">▲ 4,000 <span style="font-size:11px;color:#7c7c9a">HIGH</span></div>
+      </div>
+      <div class="card-sub" style="margin-top:8px">USD/oz</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Trạng thái services</div>
+      <div style="margin-top:6px">
+        <div class="status-row"><span style="color:#7c7c9a">Node-RED</span><span class="badge badge-ok">ON</span></div>
+        <div class="status-row"><span style="color:#7c7c9a">MariaDB</span><span class="badge badge-ok">ON</span></div>
+        <div class="status-row"><span style="color:#7c7c9a">InfluxDB</span><span class="badge badge-ok">ON</span></div>
+        <div class="status-row"><span style="color:#7c7c9a">Grafana</span><span class="badge badge-ok">ON</span></div>
+        <div class="status-row"><span style="color:#7c7c9a">Telegram Bot</span><span class="badge badge-ok" id="tele-status">ON</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="source-card">
+    <div class="section-title"><span>Nguồn dữ liệu</span><span class="badge badge-ok">Thực tế</span></div>
+    <div class="source-items">
+      <div class="source-item">
+        <span style="font-size:24px">🥇</span>
+        <div><div class="source-name">Giá Vàng Thế Giới</div><div class="source-status">Yahoo Finance · GC=F · 30s/lần</div></div>
+        <span class="badge badge-ok" style="margin-left:auto">Live</span>
+      </div>
+      <div class="source-item">
+        <span style="font-size:24px">📈</span>
+        <div><div class="source-name">InfluxDB History</div><div class="source-status">monitor_bucket · gold_price</div></div>
+        <span class="badge badge-ok" style="margin-left:auto">Live</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="chart-card">
+    <div class="section-title"><span>📈 Biểu đồ lịch sử (Grafana)</span><span style="font-size:12px;color:#7c7c9a">1 giờ qua</span></div>
     <iframe src="http://localhost:3000/d-solo/ad4lstv/monitor-dashboard?orgId=1&panelId=panel-1&refresh=30s&theme=dark" allowfullscreen></iframe>
   </div>
+
+  <div class="alert-card" id="alert-log">
+    <div class="section-title"><span>🔔 Cảnh báo gần đây</span><span class="badge badge-alert" id="alert-count">0 alerts</span></div>
+    <div id="alert-list"><div style="color:#7c7c9a;font-size:13px">Chưa có cảnh báo...</div></div>
+  </div>
+
   <script>
-    const ALERT_LOW = 3000;
-    const ALERT_HIGH = 4000;
+    const ALERT_LOW = 3000, ALERT_HIGH = 4000;
+    let alertCount = 0, lastAlertVal = null;
+
     function fetchLatest() {
       fetch('/api/latest')
-        .then(res => res.json())
+        .then(r => r.json())
         .then(json => {
           if (json.status === 'ok' && json.data) {
-            const val = json.data.value;
-            const time = json.data.timestamp;
-            document.getElementById('current-value').textContent = parseFloat(val).toFixed(2);
-            document.getElementById('update-time').textContent = 'Lúc: ' + time;
-            const statusEl = document.getElementById('alert-status');
+            const val = parseFloat(json.data.value);
+            const time = new Date(json.data.timestamp).toLocaleTimeString('vi-VN');
+            document.getElementById('current-value').textContent = val.toFixed(2);
+            document.getElementById('last-update').textContent = 'Cập nhật: ' + time;
+            const st = document.getElementById('alert-status');
             if (val < ALERT_LOW) {
-              statusEl.textContent = '⚠️ ALERT LOW: Giá dưới ngưỡng!';
-              statusEl.className = 'label status-alert';
+              st.innerHTML = '<span class="badge badge-alert">⚠ ALERT LOW</span>';
+              addAlert('ALERT LOW', val, time);
             } else if (val > ALERT_HIGH) {
-              statusEl.textContent = '⚠️ ALERT HIGH: Giá vượt ngưỡng!';
-              statusEl.className = 'label status-alert';
+              st.innerHTML = '<span class="badge badge-alert">⚠ ALERT HIGH</span>';
+              addAlert('ALERT HIGH', val, time);
             } else {
-              statusEl.textContent = '✅ Bình thường';
-              statusEl.className = 'label status-ok';
+              st.innerHTML = '<span class="badge badge-ok">✅ Bình thường</span>';
             }
           }
-        })
-        .catch(err => console.error('Lỗi fetch:', err));
+        }).catch(() => {
+          document.getElementById('sys-status').textContent = 'Đang kết nối...';
+        });
     }
+
+    function addAlert(type, val, time) {
+      if (lastAlertVal === val) return;
+      lastAlertVal = val;
+      alertCount++;
+      document.getElementById('alert-count').textContent = alertCount + ' alerts';
+      const list = document.getElementById('alert-list');
+      const item = document.createElement('div');
+      item.className = 'alert-item';
+      item.innerHTML = '<span>⚠</span><span style="color:#f87171">' + type + ': Giá vàng = ' + val.toFixed(2) + ' USD/oz</span><span class="alert-time">' + time + '</span>';
+      list.insertBefore(item, list.firstChild);
+      if (list.children.length > 5) list.removeChild(list.lastChild);
+    }
+
     fetchLatest();
     setInterval(fetchLatest, 5000);
   </script>
@@ -786,17 +870,17 @@ cat > ~/bt5-monitor-app/nginx/html/index.html << 'EOF'
 </html>
 EOF
 ```
-<img width="1919" height="1032" alt="image" src="https://github.com/user-attachments/assets/29b71ecc-66e6-493b-968d-17d633c02523" />
+<img width="1919" height="1029" alt="image" src="https://github.com/user-attachments/assets/443208cf-fa08-4f9b-afb7-8a859891b44e" />
 
-<img width="1922" height="763" alt="image" src="https://github.com/user-attachments/assets/de8625ff-35a0-41ed-8dd4-b8d60666260b" />
+<img width="1272" height="765" alt="image" src="https://github.com/user-attachments/assets/cc3a3224-9b7b-48de-9b9a-773a4819f09b" />
 
 - Truy cập vào trình duyệt:
 ```
 http://localhost
 ```
-<img width="1919" height="981" alt="image" src="https://github.com/user-attachments/assets/7667bccf-69e1-49aa-a1f0-2ecca8d04a00" />
+<img width="1919" height="983" alt="image" src="https://github.com/user-attachments/assets/0f7487b2-752a-417d-b267-e6e4a108e07e" />
 
-<img width="1919" height="983" alt="image" src="https://github.com/user-attachments/assets/025c9e65-288b-4890-8dd1-40f130bdcca6" />
+<img width="1919" height="986" alt="image" src="https://github.com/user-attachments/assets/1a438ac4-0c91-42c3-915a-25c9d0fbfbf2" />
 
 - Export container ra file nén, xóa rồi load lại.
 - Chạy lệnh trên Ubuntu để export tất cả images:
