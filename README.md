@@ -796,6 +796,8 @@ http://localhost
 ```
 <img width="1919" height="981" alt="image" src="https://github.com/user-attachments/assets/7667bccf-69e1-49aa-a1f0-2ecca8d04a00" />
 
+<img width="1919" height="983" alt="image" src="https://github.com/user-attachments/assets/025c9e65-288b-4890-8dd1-40f130bdcca6" />
+
 - Export container ra file nén, xóa rồi load lại.
 - Chạy lệnh trên Ubuntu để export tất cả images:
 ```
@@ -815,6 +817,37 @@ docker save \
 ls -lh bt5_monitor_images.tar
 ```
 <img width="1923" height="447" alt="image" src="https://github.com/user-attachments/assets/70021467-37b8-4218-a1f8-25ef33c1f8ed" />
+
+### Xóa toàn bộ container rồi load lại từ file:
+- Bước 1: Xóa tất cả container
+```
+docker compose down
+```
+- Bước 2: Xóa tất cả images
+```
+docker rmi nodered/node-red:latest grafana/grafana:latest influxdb:2.7 mariadb:10.11 nginx:latest bt5-monitor-app-flask-api:latest
+```
+<img width="1622" height="653" alt="image" src="https://github.com/user-attachments/assets/c272a4e0-4658-4009-a7bf-d53d4bcbff1d" />
+
+- Bước 3: Load images từ file
+```
+docker load -i bt5_monitor_images.tar
+```
+<img width="1411" height="554" alt="image" src="https://github.com/user-attachments/assets/a54cec9a-f3cc-4411-895a-41523be769e0" />
+
+- Bước 4: Khởi động lại toàn bộ 
+```
+docker compose up -d
+```
+rồi kiểm tra: 
+```
+docker compose ps
+```
+<img width="1449" height="514" alt="image" src="https://github.com/user-attachments/assets/858140ef-54f8-4f6c-8efd-baff45b0cbd5" />
+
+
+
+
 
 
 
